@@ -1,0 +1,119 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gorilla/mux"
+)
+
+// Transaction структура для хранения информации о транзакции
+type Transaction struct {
+	ID          int       `json:"id"`
+	Amount      float64   `json:"amount"`
+	Currency    string    `json:"currency"`
+	Type        string    `json:"type"`
+	Category    string    `json:"category"`
+	Date        time.Time `json:"date"`
+	Description string    `json:"description"`
+}
+
+var transactions []Transaction
+var idCounter = 1
+
+// Handlers
+func createTransaction(w http.ResponseWriter, r *http.Request) {
+	var newTransaction Transaction
+	err := json.NewDecoder(r.Body).Decode(&newTransaction)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	newTransaction.ID = idCounter
+	idCounter++
+	newTransaction.Date = time.Now()
+
+	transactions = append(transactions, newTransaction)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(newTransaction)
+}
+
+func getAllTransactions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(transactions)
+}
+
+func getTransactionByID(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	id, _ := strconv.Atoi(params["id"])
+
+	for _, transaction := range transactions {
+		if transaction.ID == id {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(transaction)
+			return
+		}
+	}
+
+	http.Error(w, "Transaction not found", http.StatusNotFound)
+}
+
+func updateTransactionByID(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	id, _ := strconv.Atoi(params["id"])
+
+	var updatedTransaction Transaction
+	err := json.NewDecoder(r.Body).Decode(&updatedTransaction)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	for i, transaction := range transactions {
+		if transaction.ID == id {
+			updatedTransaction.ID = id
+			updatedTransaction.Date = time.Now()
+			transactions[i] = updatedTransaction
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(updatedTransaction)
+			return
+		}
+	}
+
+	http.Error(w, "Transaction not found", http.StatusNotFound)
+}
+
+func deleteTransactionByID(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	id, _ := strconv.Atoi(params["id"])
+
+	for i, transaction := range transactions {
+		if transaction.ID == id {
+			transactions = append(transactions[:i], transactions[i+1:]...)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+	}
+
+	http.Error(w, "Transaction not found", http.StatusNotFound)
+}
+
+func main() {
+	router := mux.NewRouter()
+
+	// Endpoints
+	router.HandleFunc("/transactions", createTransaction).Methods("POST")
+	router.HandleFunc("/transactions", getAllTransactions).Methods("GET")
+	router.HandleFunc("/transactions/{id}", getTransactionByID).Methods("GET")
+	router.HandleFunc("/transactions/{id}", updateTransactionByID).Methods("PUT")
+	router.HandleFunc("/transactions/{id}", deleteTransactionByID).Methods("DELETE")
+
+	fmt.Println("Server started on port 8080")
+	log.Fatal(http.ListenAndServe(":8080", router))
+}
